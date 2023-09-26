@@ -30,13 +30,12 @@ void generate_inference_intrinsics(int num_iterations, std::vector<float*>& data
         __m256 _mm_result;
         #pragma omp parallel for
         for(int row_id=0; row_id < data.size(); row_id++){
-            for (int i=0; i<8; i++) {
-                // std::cout << row[i] *coeff[i] << std::endl;
-                __m256 _mm_x = _mm256_loadu_ps(&data[row_id][0]);
-                _mm_result = _mm256_fmadd_ps(_mm_coeff, _mm_x, _mm_intercept);
-                result[row_id] += data[row_id][i]*coeff[i];
-            }
-            result[row_id] += intercept;
+            // std::cout << row[i] *coeff[i] << std::endl;
+            __m256 _mm_x = _mm256_loadu_ps(&data[row_id][0]);
+            _mm_result = _mm256_fmadd_ps(_mm_coeff, _mm_x, _mm_intercept);
+
+            _mm_result = _mm256_hadd_ps(_mm_result, _mm_result);
+            result[row_id] = _mm256_cvtss_f32(_mm256_permute_ps(_mm_result, 0x00));
             // std::cout << result[row_id] << std::endl;
             row_id++;
         }
@@ -56,7 +55,7 @@ int main() {
         return 1;
     }
 
-    int num_interations = 10000000;
+    int num_interations = 1;
 
     alignas(32) float model_coefficients[8] = { 0.75568351,  1.12939616,  0.52521255, -0.13658123,  0.5836674 , -0.4185402 ,  0.06868902,  1.03548009};
     float model_intercept = 108.12875268590685;
@@ -95,12 +94,23 @@ int main() {
     inputFile.close();
 
     auto start = std::chrono::high_resolution_clock::now();
-    generate_inference(num_interations, data, result, model_coefficients, model_intercept);
+    generate_inference_intrinsics(num_interations, data, result, model_coefficients, model_intercept);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;
     double seconds = elapsed_seconds.count();
     float inferences_per_second = (1000*num_interations)/(seconds*1e6);
     // Print the data
+    std::cout << "Inferences per second: " << inferences_per_second << std::endl;
+    std::cout << "Sample result: " << result[0] << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
+    generate_inference_intrinsics(num_interations, data, result, model_coefficients, model_intercept);
+    end = std::chrono::high_resolution_clock::now();
+    elapsed_seconds = end - start;
+    seconds = elapsed_seconds.count();
+    inferences_per_second = (1000*num_interations)/(seconds*1e6);
+    // Print the data
+    std::cout << "\nIntrinsics";
     std::cout << "Inferences per second: " << inferences_per_second << std::endl;
     std::cout << "Sample result: " << result[0] << std::endl;
     for (const auto& row : data) {
