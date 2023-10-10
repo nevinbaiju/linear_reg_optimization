@@ -22,15 +22,6 @@ void generate_inference(int num_iterations, std::vector<float*>& data, float res
     }
 }
 
-float hsum_double_avx(__m256 v) {
-    __m128 vlow  = _mm256_castps256_ps128(v);
-    __m128 vhigh = _mm256_extractf128_ps(v, 1);
-    vlow  = _mm_add_ps(vlow, vhigh);
-
-    __m128 high64 = _mm_unpackhi_ps(vlow, vlow);
-    return  _mm_cvtss_f32(_mm_add_ps(vlow, high64));  // reduce to scalar
-}
-
 void print_register(__m256 __m256_reg){
     float buffer[8];
     _mm256_store_ps(&buffer[0], __m256_reg);
@@ -42,24 +33,54 @@ void print_register(__m256 __m256_reg){
 
 void generate_inference_intrinsics(int num_iterations, std::vector<float*>& data, float result[], float coeff[], float intercept) {
     float buffer[8];
+    __m256 _m_coeff_0 = _mm256_set1_ps(coeff[0]);
+    __m256 _m_coeff_1 = _mm256_set1_ps(coeff[1]);
+    __m256 _m_coeff_2 = _mm256_set1_ps(coeff[2]);
+    __m256 _m_coeff_3 = _mm256_set1_ps(coeff[3]);
+    __m256 _m_coeff_4 = _mm256_set1_ps(coeff[4]);
+    __m256 _m_coeff_5 = _mm256_set1_ps(coeff[5]);
+    __m256 _m_coeff_6 = _mm256_set1_ps(coeff[6]);
+    __m256 _m_coeff_7 = _mm256_set1_ps(coeff[7]);
+
+    __m256 _m_intercept = _mm256_set1_ps(intercept);
+
+    
     for (int iteration = 0; iteration<num_iterations; iteration++)
     {
-        __m256 _mm_coeff = _mm256_load_ps(&coeff[0]);
-        __m256 _mm_result, _mm_x, random_reg;
-        #pragma omp parallel for
-        for(int row_id=0; row_id < 5; row_id++){
-            // std::cout << row[i] *coeff[i] << std::endl;
-            _mm_x = _mm256_loadu_ps(&data[row_id][0]);
-            _mm256_store_ps(&buffer[0], _mm_x);
-            
-            _mm_result = _mm256_mul_ps(_mm_coeff, _mm_x);
-            _mm256_store_ps(&buffer[0], _mm_result);
-            
-            print_register(_mm_result);
-            result[row_id] = buffer[0]+buffer[1]+buffer[2]+buffer[3]+
-                             buffer[4]+buffer[5]+buffer[6]+buffer[7]+intercept;
-            
-            std::cout << result[row_id] << std::endl;
+        #pragma omp parallel for schedule(static, 1000)
+        for(int row_id=0; row_id < data.size(); row_id+=8){
+            __m256 _m_x0, _m_x1, _m_x2, _m_x3, _m_x4, _m_x5, _m_x6, _m_x7, _m_result;
+            _m_x0 = _mm256_setr_ps(data[row_id][0], data[row_id+1][0], data[row_id+2][0], data[row_id+3][0], 
+                                   data[row_id+4][0], data[row_id+5][0], data[row_id+6][0], data[row_id+7][0]);
+            _m_x1 = _mm256_setr_ps(data[row_id][1], data[row_id+1][1], data[row_id+2][1], data[row_id+3][1], 
+                                   data[row_id+4][1], data[row_id+5][1], data[row_id+6][1], data[row_id+7][1]);
+            _m_x2 = _mm256_setr_ps(data[row_id][2], data[row_id+1][2], data[row_id+2][2], data[row_id+3][2], 
+                    data[row_id+4][2], data[row_id+5][2], data[row_id+6][2], data[row_id+7][2]);
+            _m_x3 = _mm256_setr_ps(data[row_id][3], data[row_id+1][3], data[row_id+2][3], data[row_id+3][3], 
+                        data[row_id+4][3], data[row_id+5][3], data[row_id+6][3], data[row_id+7][3]);
+            _m_x4 = _mm256_setr_ps(data[row_id][4], data[row_id+1][4], data[row_id+2][4], data[row_id+3][4], 
+                        data[row_id+4][4], data[row_id+5][4], data[row_id+6][4], data[row_id+7][4]);
+            _m_x5 = _mm256_setr_ps(data[row_id][5], data[row_id+1][5], data[row_id+2][5], data[row_id+3][5], 
+                        data[row_id+4][5], data[row_id+5][5], data[row_id+6][5], data[row_id+7][5]);
+            _m_x6 = _mm256_setr_ps(data[row_id][6], data[row_id+1][6], data[row_id+2][6], data[row_id+3][6], 
+                        data[row_id+4][6], data[row_id+5][6], data[row_id+6][6], data[row_id+7][6]);
+            _m_x7 = _mm256_setr_ps(data[row_id][7], data[row_id+1][7], data[row_id+2][7], data[row_id+3][7], 
+                        data[row_id+4][7], data[row_id+5][7], data[row_id+6][7], data[row_id+7][7]);       
+
+            _m_x0 = _mm256_add_ps(_m_x0, _m_x1);
+            _m_x2 = _mm256_add_ps(_m_x2, _m_x3);
+            _m_x4 = _mm256_add_ps(_m_x4, _m_x5);
+            _m_x6 = _mm256_add_ps(_m_x6, _m_x7); 
+
+            _m_x0 = _mm256_add_ps(_m_x0, _m_x2);
+            _m_x4 = _mm256_add_ps(_m_x4, _m_x6);
+
+            _m_result = _mm256_add_ps(_m_x0, _m_result);
+            _m_result = _mm256_add_ps(_m_x0, _m_result);
+            _m_result = _mm256_add_ps(_m_x0, _m_intercept);
+
+            _mm256_store_ps(&result[row_id], _m_result);
+            // std::cout << "Ivide vare ethi" << std::endl;
         }
     }
 }
